@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Clarity</title>
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#0a0a0a" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0a0a0a;
+      --surface:   #111111;
+      --border:    #222222;
+      --border-hi: #333333;
+      --text:      #e8e4dc;
+      --muted:     #555555;
+      --accent:    #c8f05a;
+      --accent-dim:#8aaa2e;
+      --danger:    #f05a5a;
+      --mono:      'DM Mono', monospace;
+      --sans:      'Syne', sans-serif;
+      --radius:    6px;
+      --transition: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 14px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Layout ── */
+    .shell {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+    }
+
+    header {
+      padding: 24px 32px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: baseline;
+      gap: 16px;
+    }
+
+    .wordmark {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      color: var(--accent);
+    }
+
+    .tagline {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 0.05em;
+    }
+
+    .server-dot {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--muted);
+      transition: background var(--transition);
+    }
+    .dot.online  { background: var(--accent); box-shadow: 0 0 8px var(--accent-dim); }
+    .dot.offline { background: var(--danger); }
+
+    main {
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: 0;
+      overflow: hidden;
+    }
+
+    /* ── Drop zone ── */
+    .drop-area {
+      padding: 40px;
+      display: flex;
+      flex-direction: column;
+      gap: 32px;
+      border-right: 1px solid var(--border);
+    }
+
+    .dropzone {
+      border: 1.5px dashed var(--border-hi);
+      border-radius: var(--radius);
+      padding: 60px 40px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color var(--transition), background var(--transition);
+      position: relative;
+    }
+    .dropzone:hover, .dropzone.over {
+      border-color: var(--accent);
+      background: rgba(200, 240, 90, 0.03);
+    }
+    .dropzone input[type="file"] {
+      position: absolute; inset: 0;
+      opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+
+    .drop-icon {
+      font-size: 36px;
+      margin-bottom: 16px;
+      opacity: 0.4;
+    }
+
+    .drop-label {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+
+    .drop-sub {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    /* ── File info ── */
+    .file-info {
+      display: none;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      gap: 12px;
+      align-items: center;
+    }
+    .file-info.visible { display: flex; }
+
+    .file-thumb {
+      width: 48px; height: 48px;
+      border-radius: 4px;
+      object-fit: cover;
+      background: var(--border);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+    }
+
+    .file-meta { flex: 1; min-width: 0; }
+    .file-name {
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .file-size {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .clear-btn {
+      background: none; border: none;
+      color: var(--muted); cursor: pointer;
+      font-size: 18px; line-height: 1;
+      transition: color var(--transition);
+    }
+    .clear-btn:hover { color: var(--danger); }
+
+    /* ── Progress ── */
+    .progress-wrap {
+      display: none;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .progress-wrap.visible { display: flex; }
+
+    .progress-label {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .progress-bar {
+      height: 3px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: var(--accent);
+      width: 0%;
+      transition: width 600ms ease;
+      border-radius: 2px;
+    }
+
+    .download-btn {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: var(--accent);
+      color: #0a0a0a;
+      border: none;
+      border-radius: var(--radius);
+      padding: 14px 24px;
+      font-family: var(--sans);
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      letter-spacing: 0.02em;
+      transition: opacity var(--transition);
+      text-decoration: none;
+    }
+    .download-btn:hover { opacity: 0.85; }
+    .download-btn.visible { display: flex; }
+
+    /* ── Process button ── */
+    .process-btn {
+      background: none;
+      border: 1.5px solid var(--accent);
+      color: var(--accent);
+      border-radius: var(--radius);
+      padding: 14px 24px;
+      font-family: var(--sans);
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      letter-spacing: 0.02em;
+      transition: background var(--transition), color var(--transition);
+      width: 100%;
+    }
+    .process-btn:hover:not(:disabled) {
+      background: var(--accent);
+      color: #0a0a0a;
+    }
+    .process-btn:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+
+    /* ── Options panel ── */
+    .options-panel {
+      padding: 32px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+      overflow-y: auto;
+    }
+
+    .panel-title {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+
+    .option-group {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .option-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .option-label {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .option-desc {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    /* Toggle */
+    .toggle {
+      position: relative;
+      width: 36px; height: 20px;
+      flex-shrink: 0;
+    }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-track {
+      position: absolute; inset: 0;
+      background: var(--border-hi);
+      border-radius: 20px;
+      cursor: pointer;
+      transition: background var(--transition);
+    }
+    .toggle-track::after {
+      content: '';
+      position: absolute;
+      left: 3px; top: 3px;
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: var(--muted);
+      transition: transform var(--transition), background var(--transition);
+    }
+    .toggle input:checked + .toggle-track { background: rgba(200,240,90,0.2); }
+    .toggle input:checked + .toggle-track::after {
+      transform: translateX(16px);
+      background: var(--accent);
+    }
+
+    /* Sub-options */
+    .sub-options {
+      padding: 12px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      display: none;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .sub-options.visible { display: flex; }
+
+    .sub-label {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    .pill-group {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .pill {
+      background: none;
+      border: 1px solid var(--border-hi);
+      color: var(--muted);
+      border-radius: 20px;
+      padding: 4px 12px;
+      font-family: var(--mono);
+      font-size: 11px;
+      cursor: pointer;
+      transition: all var(--transition);
+    }
+    .pill:hover { border-color: var(--accent); color: var(--accent); }
+    .pill.active {
+      background: rgba(200,240,90,0.12);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    select.clarity-select {
+      background: var(--bg);
+      border: 1px solid var(--border-hi);
+      color: var(--text);
+      border-radius: var(--radius);
+      padding: 6px 10px;
+      font-family: var(--mono);
+      font-size: 11px;
+      width: 100%;
+      cursor: pointer;
+    }
+
+    .divider {
+      height: 1px;
+      background: var(--border);
+    }
+
+    footer {
+      padding: 16px 32px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .footer-note {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--muted);
+    }
+
+    .error-msg {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--danger);
+      display: none;
+    }
+    .error-msg.visible { display: block; }
+
+    @media (max-width: 700px) {
+      main { grid-template-columns: 1fr; }
+      .options-panel { border-top: 1px solid var(--border); }
+      .drop-area { padding: 24px; }
+    }
+  </style>
+</head>
+<body>
+<div class="shell">
+
+  <header>
+    <span class="wordmark">clarity</span>
+    <span class="tagline">local image &amp; video processing</span>
+    <div class="server-dot">
+      <div class="dot" id="statusDot"></div>
+      <span id="statusLabel">checking...</span>
+    </div>
+  </header>
+
+  <main>
+    <!-- ── Left: drop + progress ── -->
+    <div class="drop-area">
+
+      <div class="dropzone" id="dropzone">
+        <input type="file" id="fileInput" accept="image/*,video/*" />
+        <div class="drop-icon">⬡</div>
+        <div class="drop-label">Drop a photo or video here</div>
+        <div class="drop-sub">jpg · png · mp4 · mov · avi · mkv</div>
+      </div>
+
+      <div class="file-info" id="fileInfo">
+        <div class="file-thumb" id="fileThumb">🎞</div>
+        <div class="file-meta">
+          <div class="file-name" id="fileName">—</div>
+          <div class="file-size" id="fileSize">—</div>
+        </div>
+        <button class="clear-btn" id="clearBtn" title="Remove file">×</button>
+      </div>
+
+      <div class="progress-wrap" id="progressWrap">
+        <div class="progress-label">
+          <span id="progressMsg">Processing...</span>
+          <span id="progressPct">0%</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+      </div>
+
+      <div class="error-msg" id="errorMsg"></div>
+
+      <a class="download-btn" id="downloadBtn" href="#" download>
+        ↓ Download result
+      </a>
+
+      <button class="process-btn" id="processBtn" disabled>
+        Process
+      </button>
+
+    </div>
+
+    <!-- ── Right: options ── -->
+    <div class="options-panel">
+      <div class="panel-title">Processing options</div>
+
+      <!-- Upscale -->
+      <div class="option-group">
+        <div class="option-row">
+          <div>
+            <div class="option-label">Upscale</div>
+            <div class="option-desc">Increase resolution with AI</div>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="upscaleToggle" checked />
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+        <div class="sub-options visible" id="upscaleSub">
+          <div class="sub-label">Target height</div>
+          <div class="pill-group" id="heightPills">
+            <button class="pill" data-val="720">720p</button>
+            <button class="pill active" data-val="1080">1080p</button>
+            <button class="pill" data-val="1440">1440p</button>
+            <button class="pill" data-val="2160">4K</button>
+          </div>
+          <div class="sub-label" style="margin-top:6px">Model</div>
+          <select class="clarity-select" id="modelSelect">
+            <option value="realesr-general-x4v3">General (recommended)</option>
+            <option value="realesrgan-x4plus">Photo x4</option>
+            <option value="realesrgan-x4plus-anime">Faces / illustration</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Sharpen -->
+      <div class="option-group">
+        <div class="option-row">
+          <div>
+            <div class="option-label">Sharpen</div>
+            <div class="option-desc">Reduce softness / lens blur</div>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="sharpenToggle" />
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+        <div class="sub-options" id="sharpenSub">
+          <div class="sub-label">Strength</div>
+          <div class="pill-group" id="sharpenPills">
+            <button class="pill" data-val="light">Light</button>
+            <button class="pill active" data-val="medium">Medium</button>
+            <button class="pill" data-val="heavy">Heavy</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Denoise -->
+      <div class="option-group">
+        <div class="option-row">
+          <div>
+            <div class="option-label">Denoise</div>
+            <div class="option-desc">Reduce grain and noise</div>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="denoiseToggle" />
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+        <div class="sub-options" id="denoiseSub">
+          <div class="sub-label">Strength</div>
+          <div class="pill-group" id="denoisePills">
+            <button class="pill" data-val="light">Light</button>
+            <button class="pill active" data-val="medium">Medium</button>
+            <button class="pill" data-val="heavy">Heavy</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Stabilize (video only) -->
+      <div class="option-group" id="stabilizeGroup">
+        <div class="option-row">
+          <div>
+            <div class="option-label">Stabilize</div>
+            <div class="option-desc">Video only — reduce camera shake</div>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="stabilizeToggle" />
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <footer>
+    <span class="footer-note">all processing runs locally — files never leave your machine</span>
+    <span class="footer-note" id="footerServer">backend: localhost:5050</span>
+  </footer>
+
+</div>
+
+<script>
+  const API = "http://localhost:5050/api";
+  let currentFile = null;
+  let pollTimer = null;
+
+  // ── Server health check ────────────────────────────────────────────────────
+  const dot = document.getElementById("statusDot");
+  const statusLabel = document.getElementById("statusLabel");
+
+  async function checkServer() {
+    try {
+      const r = await fetch(`${API}/health`, { signal: AbortSignal.timeout(2000) });
+      if (r.ok) {
+        dot.className = "dot online";
+        statusLabel.textContent = "backend online";
+        return true;
+      }
+    } catch {}
+    dot.className = "dot offline";
+    statusLabel.textContent = "backend offline";
+    return false;
+  }
+  checkServer();
+  setInterval(checkServer, 8000);
+
+  // ── Pill groups ────────────────────────────────────────────────────────────
+  function initPills(groupId) {
+    const group = document.getElementById(groupId);
+    group.querySelectorAll(".pill").forEach(pill => {
+      pill.addEventListener("click", () => {
+        group.querySelectorAll(".pill").forEach(p => p.classList.remove("active"));
+        pill.classList.add("active");
+      });
+    });
+  }
+  initPills("heightPills");
+  initPills("sharpenPills");
+  initPills("denoisePills");
+
+  function getPillValue(groupId) {
+    const active = document.getElementById(groupId).querySelector(".pill.active");
+    return active ? active.dataset.val : null;
+  }
+
+  // ── Toggle sub-options ─────────────────────────────────────────────────────
+  function bindToggle(toggleId, subId) {
+    const toggle = document.getElementById(toggleId);
+    const sub = document.getElementById(subId);
+    toggle.addEventListener("change", () => {
+      sub.classList.toggle("visible", toggle.checked);
+    });
+  }
+  bindToggle("upscaleToggle", "upscaleSub");
+  bindToggle("sharpenToggle", "sharpenSub");
+  bindToggle("denoiseToggle", "denoiseSub");
+
+  // ── File handling ──────────────────────────────────────────────────────────
+  const dropzone = document.getElementById("dropzone");
+  const fileInput = document.getElementById("fileInput");
+  const fileInfo = document.getElementById("fileInfo");
+  const fileThumb = document.getElementById("fileThumb");
+  const fileName = document.getElementById("fileName");
+  const fileSize = document.getElementById("fileSize");
+  const clearBtn = document.getElementById("clearBtn");
+  const processBtn = document.getElementById("processBtn");
+
+  dropzone.addEventListener("dragover", e => { e.preventDefault(); dropzone.classList.add("over"); });
+  dropzone.addEventListener("dragleave", () => dropzone.classList.remove("over"));
+  dropzone.addEventListener("drop", e => {
+    e.preventDefault();
+    dropzone.classList.remove("over");
+    if (e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener("change", () => { if (fileInput.files[0]) setFile(fileInput.files[0]); });
+  clearBtn.addEventListener("click", clearFile);
+
+  function setFile(file) {
+    currentFile = file;
+    fileName.textContent = file.name;
+    fileSize.textContent = formatSize(file.size);
+    const isVideo = file.type.startsWith("video/");
+    fileThumb.textContent = isVideo ? "🎞" : "🖼";
+    // Show/hide stabilize for video only
+    document.getElementById("stabilizeGroup").style.display = isVideo ? "" : "none";
+    fileInfo.classList.add("visible");
+    dropzone.style.display = "none";
+    processBtn.disabled = false;
+    resetProgress();
+  }
+
+  function clearFile() {
+    currentFile = null;
+    fileInput.value = "";
+    fileInfo.classList.remove("visible");
+    dropzone.style.display = "";
+    processBtn.disabled = true;
+    resetProgress();
+    if (pollTimer) clearInterval(pollTimer);
+  }
+
+  function formatSize(bytes) {
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+    return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+  }
+
+  // ── Progress ───────────────────────────────────────────────────────────────
+  const progressWrap = document.getElementById("progressWrap");
+  const progressMsg = document.getElementById("progressMsg");
+  const progressPct = document.getElementById("progressPct");
+  const progressFill = document.getElementById("progressFill");
+  const downloadBtn = document.getElementById("downloadBtn");
+  const errorMsg = document.getElementById("errorMsg");
+
+  function resetProgress() {
+    progressWrap.classList.remove("visible");
+    downloadBtn.classList.remove("visible");
+    errorMsg.classList.remove("visible");
+    progressFill.style.width = "0%";
+  }
+
+  function setProgress(pct, msg) {
+    progressWrap.classList.add("visible");
+    progressFill.style.width = pct + "%";
+    progressPct.textContent = pct + "%";
+    progressMsg.textContent = msg || "Processing...";
+  }
+
+  function showError(msg) {
+    errorMsg.textContent = msg;
+    errorMsg.classList.add("visible");
+    progressWrap.classList.remove("visible");
+    processBtn.disabled = false;
+  }
+
+  // ── Process ────────────────────────────────────────────────────────────────
+  processBtn.addEventListener("click", async () => {
+    if (!currentFile) return;
+    const online = await checkServer();
+    if (!online) {
+      showError("Backend is offline. Run: python server.py");
+      return;
+    }
+
+    processBtn.disabled = true;
+    downloadBtn.classList.remove("visible");
+    errorMsg.classList.remove("visible");
+    setProgress(2, "Uploading...");
+
+    const fd = new FormData();
+    fd.append("file", currentFile);
+    fd.append("upscale", document.getElementById("upscaleToggle").checked);
+    fd.append("sharpen", document.getElementById("sharpenToggle").checked);
+    fd.append("denoise", document.getElementById("denoiseToggle").checked);
+    fd.append("stabilize", document.getElementById("stabilizeToggle").checked);
+    fd.append("target_height", getPillValue("heightPills") || "1080");
+    fd.append("sharpen_strength", getPillValue("sharpenPills") || "medium");
+    fd.append("denoise_strength", getPillValue("denoisePills") || "medium");
+    fd.append("model", document.getElementById("modelSelect").value);
+
+    try {
+      const res = await fetch(`${API}/process`, { method: "POST", body: fd });
+      if (!res.ok) throw new Error("Upload failed");
+      const { job_id } = await res.json();
+      pollJob(job_id);
+    } catch (e) {
+      showError("Failed to start processing: " + e.message);
+    }
+  });
+
+  function pollJob(jobId) {
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(async () => {
+      try {
+        const res = await fetch(`${API}/status/${jobId}`);
+        const job = await res.json();
+        setProgress(job.progress, job.message);
+        if (job.status === "done") {
+          clearInterval(pollTimer);
+          downloadBtn.href = `${API}/download/${jobId}`;
+          downloadBtn.classList.add("visible");
+          processBtn.disabled = false;
+        } else if (job.status === "error") {
+          clearInterval(pollTimer);
+          showError("Processing failed: " + job.message);
+        }
+      } catch {}
+    }, 1500);
+  }
+
+  // ── PWA service worker ─────────────────────────────────────────────────────
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  }
+</script>
+</body>
+</html>

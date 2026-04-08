@@ -1,0 +1,6 @@
+flask
+flask-cors
+realesrgan
+basicsr
+gfpgan
+opencv-python
