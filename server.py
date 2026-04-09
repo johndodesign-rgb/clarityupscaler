@@ -17,9 +17,10 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("clarity")
+FFMPEG = "/opt/homebrew/bin/ffmpeg"
 
 app = Flask(__name__)
-CORS(app, origins=["https://*.github.io", "http://localhost:*", "http://127.0.0.1:*"])
+CORS(app, origins=["https://*.github.io", "https://localhost:*", "https://127.0.0.1:*"])
 
 UPLOAD_DIR = Path(tempfile.gettempdir()) / "clarity_uploads"
 OUTPUT_DIR = Path(tempfile.gettempdir()) / "clarity_outputs"
@@ -71,7 +72,7 @@ def process_video(job_id, input_path, output_path, options):
             denoised = str(input_path).replace(".mov", "_dn.mov").replace(".mp4", "_dn.mp4")
             denoised = str(OUTPUT_DIR / f"{job_id}_denoised.mp4")
             ok = run_command([
-                "ffmpeg", "-y", "-i", str(current),
+                "FFMPEG", "-y", "-i", str(current),
                 "-vf", f"hqdn3d={luma}",
                 "-c:a", "copy", denoised
             ], job_id, "Denoising...")
@@ -81,20 +82,73 @@ def process_video(job_id, input_path, output_path, options):
             current = denoised
             jobs[job_id]["progress"] = 30
 
-        # ── Step 2: Upscale (video2x) ─────────────────────────────────────
+        # ── Step 2: Upscale (Real-ESRGAN frame by frame) ──────────────────
         if options.get("upscale"):
-            target_h = options.get("target_height", 1080)
-            model = options.get("model", "realesr-general-x4v3")
+            import cv2
+            from realesrgan import RealESRGANer
+            from basicsr.archs.rrdbnet_arch import RRDBNet
+
+            jobs[job_id]["message"] = "Upscaling video..."
+            frames_dir = OUTPUT_DIR / f"{job_id}_frames"
+            upscaled_dir = OUTPUT_DIR / f"{job_id}_upscaled_frames"
+            frames_dir.mkdir(exist_ok=True)
+            upscaled_dir.mkdir(exist_ok=True)
+
+            # Extract frames
+            run_command([
+                FFMPEG, "-y", "-i", str(current),
+                str(frames_dir / "frame%06d.png")
+            ], job_id, "Extracting frames...")
+
+            # Load model
+            model_obj = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64,
+                                num_block=23, num_grow_ch=32, scale=4)
+            upsampler = RealESRGANer(
+                scale=4,
+                model_path="weights/RealESRGAN_x4plus.pth",
+                model=model_obj,
+                tile=256,
+                tile_pad=10,
+                pre_pad=0,
+                half=False,
+            )
+
+            frames = sorted(frames_dir.glob("*.png"))
+            total = len(frames)
+            for i, frame_path in enumerate(frames):
+                img = cv2.imread(str(frame_path), cv2.IMREAD_UNCHANGED)
+                output, _ = upsampler.enhance(img, outscale=2)
+                cv2.imwrite(str(upscaled_dir / frame_path.name), output)
+                jobs[job_id]["progress"] = 30 + int((i / total) * 45)
+                jobs[job_id]["message"] = f"Upscaling frame {i+1}/{total}"
+
+            # Get original fps
+            import json
+            probe = subprocess.run([
+                FFMPEG, "-v", "quiet", "-print_format", "json",
+                "-show_streams", str(current)
+            ], capture_output=True, text=True)
+
+            # Reassemble
             upscaled = str(OUTPUT_DIR / f"{job_id}_upscaled.mp4")
-            ok = run_command([
-                "video2x", "-i", str(current), "-o", upscaled,
-                "-h", str(target_h), "upscale", "--model", model
-            ], job_id, f"Upscaling to {target_h}p...")
-            if not ok:
-                raise RuntimeError("Upscale step failed")
+            run_command([
+                FFMPEG, "-y",
+                "-framerate", "30",
+                "-i", str(upscaled_dir / "frame%06d.png"),
+                "-i", str(current),
+                "-map", "0:v", "-map", "1:a?",
+                "-c:v", "libx264", "-crf", "18",
+                "-c:a", "aac", upscaled
+            ], job_id, "Reassembling video...")
+
             step_files.append(upscaled)
             current = upscaled
             jobs[job_id]["progress"] = 75
+
+            # Cleanup frames
+            import shutil as _shutil
+            _shutil.rmtree(str(frames_dir), ignore_errors=True)
+            _shutil.rmtree(str(upscaled_dir), ignore_errors=True)
 
         # ── Step 3: Sharpen (ffmpeg unsharp) ──────────────────────────────
         if options.get("sharpen"):
@@ -103,7 +157,7 @@ def process_video(job_id, input_path, output_path, options):
             amounts = {"light": "3:3:0.5", "medium": "5:5:1.0", "heavy": "7:7:1.8"}[strength]
             sharpened = str(OUTPUT_DIR / f"{job_id}_sharpened.mp4")
             ok = run_command([
-                "ffmpeg", "-y", "-i", str(current),
+                "FFMPEG", "-y", "-i", str(current),
                 "-vf", f"unsharp={amounts}",
                 "-c:a", "copy", sharpened
             ], job_id, "Sharpening...")
@@ -119,13 +173,13 @@ def process_video(job_id, input_path, output_path, options):
             stabilized = str(OUTPUT_DIR / f"{job_id}_stabilized.mp4")
             # Pass 1 — detect
             run_command([
-                "ffmpeg", "-y", "-i", str(current),
+                "FFMPEG", "-y", "-i", str(current),
                 "-vf", f"vidstabdetect=result={transforms}",
                 "-f", "null", "-"
             ], job_id, "Analyzing motion...")
             # Pass 2 — stabilize
             ok = run_command([
-                "ffmpeg", "-y", "-i", str(current),
+                "FFMPEG", "-y", "-i", str(current),
                 "-vf", f"vidstabtransform=input={transforms}:smoothing=10",
                 "-c:a", "copy", stabilized
             ], job_id, "Stabilizing...")
@@ -192,14 +246,16 @@ def process_photo(job_id, input_path, output_path, options):
 
         # ── Sharpen with ffmpeg (works on images too via lavfi) ────────────
         if options.get("sharpen"):
+            from PIL import Image, ImageFilter, ImageEnhance
             strength = options.get("sharpen_strength", "medium")
-            amounts = {"light": "3:3:0.5", "medium": "5:5:1.0", "heavy": "7:7:1.8"}[strength]
+            amount = {"light": 1.2, "medium": 1.6, "heavy": 2.2}[strength]
             sharpened = str(OUTPUT_DIR / f"{job_id}_sharp.png")
-            run_command([
-                "ffmpeg", "-y", "-i", current,
-                "-vf", f"unsharp={amounts}",
-                sharpened
-            ], job_id, "Sharpening...")
+            img = Image.open(current)
+            for _ in range(int(amount)):
+                img = img.filter(ImageFilter.SHARPEN)
+            enhancer = ImageEnhance.Sharpness(img)
+            img = enhancer.enhance(amount)
+            img.save(sharpened)
             current = sharpened
             jobs[job_id]["progress"] = 85
 
@@ -274,7 +330,10 @@ def download(job_id):
     return send_file(path, as_attachment=True,
                      download_name=f"clarity_{job_id}{Path(path).suffix}")
 
+@app.route("/")
+def index():
+    return send_file("index.html")
 
 if __name__ == "__main__":
-    print("\n🎞  Clarity backend running at http://localhost:5050\n")
+    print("\nClarity running at http://127.0.0.1:5050\n")
     app.run(host="127.0.0.1", port=5050, debug=False)
